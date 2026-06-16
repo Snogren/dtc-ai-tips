@@ -20,7 +20,7 @@ It works two ways:
 2. SQL editor → run **`schema.sql`** (tables, the `is_approved()` gate, RLS).
 3. Authentication → Providers → keep **Email** on; turn **off** "Allow new users to sign up" (access is gated by the allowlist).
 4. Add approved access:
-   - Domains are seeded in `schema.sql` (`sprezz.com`, `ibm.com`, `va.gov`) — edit there or in the `approved_domains` table.
+   - Domains are seeded in `schema.sql` (`sprezzmc.com`, `va.gov`) — edit there or in the `approved_domains` table.
    - One-off subcontractors → add their email to `approved_emails`.
 5. Settings → API → copy the **Project URL** and **anon public** key into `config.js`.
 6. Have nicholas.snogren@sprezz.com sign in once, then run **`seed.sql`** to load the default tips under his name.

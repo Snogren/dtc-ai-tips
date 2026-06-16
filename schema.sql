@@ -33,7 +33,7 @@ create table if not exists approved_emails  ( email  text primary key );
 
 -- seed the known orgs (edit as needed)
 insert into approved_domains (domain) values
-  ('sprezz.com'), ('ibm.com'), ('va.gov')
+  ('sprezzmc.com'), ('va.gov')
   on conflict do nothing;
 
 -- ---------- the access gate ----------
