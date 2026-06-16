@@ -9,6 +9,7 @@ html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
 ::selection{background:var(--accent-soft)}
 input,textarea,button{font-family:inherit}
+[hidden]{display:none !important}
 
 /* ---- banner ---- */
 .banner{background:#3c3833;color:#f4f2ec;font-family:'IBM Plex Mono',monospace;font-size:12.5px;
