@@ -188,7 +188,9 @@
       <p class="login-msg" id="formmsg"></p>`;
     main().querySelectorAll('[data-nav="catalogue"]').forEach(b => b.addEventListener('click', () => go('catalogue')));
     const sel = $('#f-group');
-    sel.addEventListener('change', () => { $('#newgroup-wrap').hidden = sel.value !== '__new'; });
+    const syncNewGroup = () => { $('#newgroup-wrap').hidden = sel.value !== '__new'; };
+    sel.addEventListener('change', syncNewGroup);
+    syncNewGroup();   // show the name input immediately when "New group…" is the default (e.g. no groups yet)
     if (!demo) $('#createBtn').addEventListener('click', createTip);
   }
 
