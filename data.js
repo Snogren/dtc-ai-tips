@@ -76,9 +76,10 @@
         cb(u);
       });
     },
-    async signIn(email){
+    async signIn(email, password){
       if (!sb) throw new Error('demo');
-      return sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.href.split('#')[0] }});
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
     },
     async signOut(){ if (sb) await sb.auth.signOut(); this.user = null; },
 
@@ -177,7 +178,7 @@
       ]);
       const nameOf = id => (profiles||[]).find(p=>p.id===id)?.display_name || '—';
       const adminOf = id => (profiles||[]).find(p=>p.id===id)?.is_admin;
-      const learned = {}; (ratings||[]).forEach(r => learned[r.user_id]=(learned[r.user_id]||0)+1);
+      const learned = {}; (ratings||[]).forEach(r => { if(!adminOf(r.user_id)) learned[r.user_id]=(learned[r.user_id]||0)+1; });
       const added = {};   (tips||[]).forEach(t => { if(!adminOf(t.author_id)) added[t.author_id]=(added[t.author_id]||0)+1; });
       const topRated = (tips||[]).map(t=>{ const rs=(ratings||[]).filter(r=>r.tip_id===t.id); const a=agg(rs);
         return { id:t.id, title:t.title, group:t.groups?.name||'', avg:a.avg, count:a.count }; });

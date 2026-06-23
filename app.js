@@ -37,9 +37,10 @@
     $('#login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = $('#email').value.trim();
+      const password = $('#password').value;
       const msg = $('#login-msg'); msg.className = 'login-msg';
-      try { await DB.signIn(email); msg.textContent = 'Check your email for a sign-in link.'; msg.classList.add('ok'); }
-      catch { msg.textContent = 'Could not send the link. Confirm your email is approved for the DTC program.'; msg.classList.add('err'); }
+      try { await DB.signIn(email, password); }
+      catch { msg.textContent = 'Incorrect email or password.'; msg.classList.add('err'); }
     });
     $('#signout').addEventListener('click', async () => { await DB.signOut(); location.reload(); });
     document.querySelectorAll('[data-nav]').forEach(el =>
@@ -273,7 +274,7 @@
       <p class="lb-intro">Who is learning and contributing most, and which tips are rated highest.</p>
       <div class="lb">
         <div class="panel"><h3>Most tips learned</h3>${rows(lb.learned)}</div>
-        <div class="panel"><h3>Most tips added <small>admin excluded</small></h3>${rows(lb.added)}</div>
+        <div class="panel"><h3>Most tips added</h3>${rows(lb.added)}</div>
       </div>
       <p class="lb-sec">Highest-rated tips</p>
       <div class="panel">${lb.topRated.length ? lb.topRated.map(t=>`

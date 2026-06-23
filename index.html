@@ -16,10 +16,11 @@
   <div id="login" class="login" hidden>
     <div class="login-card">
       <h1>AI Tips</h1>
-      <p class="login-sub">A private library of prompting techniques for the DTC program. Sign in with your work email and we'll send a one-time link.</p>
+      <p class="login-sub">A private library of prompting techniques for the DTC program. Sign in with your work email and password.</p>
       <form id="login-form">
         <input id="email" type="email" placeholder="you@sprezzmc.com" required autocomplete="email">
-        <button class="btn primary" type="submit">Send magic link</button>
+        <input id="password" type="password" placeholder="Password" required autocomplete="current-password">
+        <button class="btn primary" type="submit">Sign in</button>
       </form>
       <p id="login-msg" class="login-msg"></p>
     </div>
