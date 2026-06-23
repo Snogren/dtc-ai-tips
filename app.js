@@ -7,7 +7,18 @@
 
   let view = 'catalogue';
   let currentTip = null;
+  let currentThread = null;
   let cat = [];            // cached catalogue for the sidebar
+  let subs = [];           // cached feedback threads (for the sidebar badge)
+
+  // The three intake buttons all open one form; the type is triage metadata.
+  const FB_TYPES = {
+    idea:      { btn:'Request a prompt', label:'Prompt request', lead:'Describe a prompt you wish you had — the task, who it’s for, what good output looks like.' },
+    advice:    { btn:'Ask for advice',   label:'Advice',         lead:'Ask the program directly. What are you trying to do, and where are you stuck?' },
+    complaint: { btn:'Vent frustration', label:'Frustration',    lead:'Tell us what isn’t working. Blunt is fine — it’s a private thread to the program.' },
+  };
+  const FB_STATUS = { open:'Open', in_progress:'In progress', resolved:'Resolved' };
+  const FB_VIEWS = ['feedback-list','feedback-new','feedback-thread'];
 
   /* ---------------- boot ---------------- */
   async function boot(){
@@ -28,6 +39,7 @@
     $('#login').hidden = true; $('#app').hidden = false;
     $('#who').textContent = DB.user?.email || 'demo';
     cat = await DB.catalogue();
+    subs = await DB.submissions();
     renderSidebar();
     go('catalogue');
   }
@@ -83,9 +95,13 @@
     else if (v === 'board') renderBoard();
     else if (v === 'concepts') renderConcepts();
     else if (v === 'new-tip') renderTipForm();
+    else if (v === 'feedback-list') renderFeedbackList();
     renderSidebar();
     main().scrollIntoView({ block:'start' });
   }
+
+  // Clear the static top-nav highlight (feedback lives in its own sidebar section).
+  function clearTopNav(){ document.querySelectorAll('.navlinks .navlink').forEach(n => n.classList.remove('active')); }
 
   /* ---------------- sidebar ---------------- */
   function renderSidebar(){
@@ -100,7 +116,26 @@
     });
     const list = $('#tiplist'); list.innerHTML = h;
     list.querySelectorAll('[data-tip]').forEach(b => b.addEventListener('click', () => openTip(b.dataset.tip)));
+    renderFeedbackNav();
   }
+
+  function renderFeedbackNav(){
+    const unseen = subs.filter(s => s.unseen).length;
+    const inboxActive = FB_VIEWS.includes(view);
+    const inboxLabel = DB.isAdmin ? 'Inbox' : 'My messages';
+    let h = `<div class="lbl">Reach the program</div>`;
+    for (const [type, m] of Object.entries(FB_TYPES))
+      h += `<button class="fblink" data-fb="${type}">${esc(m.btn)}</button>`;
+    h += `<button class="navlink fbinbox ${inboxActive?'active':''}" data-nav="feedback-list">
+            <span class="ico"></span>${inboxLabel}
+            ${unseen ? `<span class="fbbadge" title="${unseen} thread${unseen>1?'s':''} with new replies">${unseen}</span>` : ''}
+          </button>`;
+    const box = $('#feedback-nav'); box.innerHTML = h;
+    box.querySelectorAll('[data-fb]').forEach(b => b.addEventListener('click', () => openFeedbackForm(b.dataset.fb)));
+    box.querySelector('[data-nav="feedback-list"]').addEventListener('click', () => go('feedback-list'));
+  }
+
+  async function refreshSubs(){ subs = await DB.submissions(); renderFeedbackNav(); }
 
   /* ---------------- catalogue ---------------- */
   function renderCatalogue(){
@@ -310,6 +345,126 @@
           <div class="m"><span>${esc(t.group)}</span><span><b>${t.avg.toFixed(1)}</b> · ${t.count} ratings</span></div></div>`).join('')
         : '<div class="row"><span class="who"><small>No rated tips yet</small></span></div>'}</div>`;
     main().querySelectorAll('[data-tip]').forEach(c => c.addEventListener('click', () => openTip(c.dataset.tip)));
+  }
+
+  /* ---------------- feedback channel ---------------- */
+  const fmtDate = (iso) => { const d = new Date(iso); return isNaN(d)?'':
+    d.getFullYear()+'·'+String(d.getMonth()+1).padStart(2,'0')+'·'+String(d.getDate()).padStart(2,'0'); };
+  const statusPill = (s) => `<span class="pill pill-${s}">${esc(FB_STATUS[s]||s)}</span>`;
+  const typeTag = (t) => `<span class="ttag">${esc(FB_TYPES[t]?.label||t)}</span>`;
+
+  async function renderFeedbackList(){
+    clearTopNav();
+    main().innerHTML = '<div class="loading">Loading…</div>';
+    subs = await DB.submissions();
+    renderFeedbackNav();
+    const intro = DB.isAdmin
+      ? 'Every member thread, newest first. Reply in any thread and set its status as you triage.'
+      : 'Your private threads with the program. Replies appear here — nothing is public.';
+    let h = `<h2 class="lb-title">${DB.isAdmin ? 'Feedback inbox' : 'My messages'}</h2>
+      <p class="lb-intro">${intro}</p>
+      <div class="fbquick">${Object.entries(FB_TYPES).map(([t,m])=>
+        `<button class="btn ghost" data-fb="${t}">${esc(m.btn)}</button>`).join('')}</div>`;
+    if (!subs.length){
+      h += `<div class="panel"><div class="empty" style="padding:22px 18px">No threads yet — start one with a button above.</div></div>`;
+    } else {
+      h += `<div class="panel fblist">${subs.map(s=>`
+        <div class="fbrow ${s.unseen?'unseen':''}" data-thread="${s.id}">
+          <div class="fbrow-main">
+            <div class="fbrow-top">${s.unseen?'<span class="dotnew" title="New activity"></span>':''}<span class="fbsubj">${esc(s.subject)}</span></div>
+            <div class="fbrow-meta">${typeTag(s.type)}${DB.isAdmin?`<span class="who">${esc(s.author)}</span>`:''}<span class="cnt">${s.messageCount} message${s.messageCount>1?'s':''}</span><span class="when">${esc(fmtDate(s.lastMessageAt))}</span></div>
+          </div>
+          ${statusPill(s.status)}
+        </div>`).join('')}</div>`;
+    }
+    main().innerHTML = h;
+    main().querySelectorAll('[data-fb]').forEach(b => b.addEventListener('click', () => openFeedbackForm(b.dataset.fb)));
+    main().querySelectorAll('[data-thread]').forEach(r => r.addEventListener('click', () => openThread(r.dataset.thread)));
+  }
+
+  function openFeedbackForm(type){
+    view = 'feedback-new'; clearTopNav();
+    const m = FB_TYPES[type] || FB_TYPES.idea;
+    main().innerHTML = `
+      <div class="eyebrow" data-nav="back">← Messages</div>
+      <h2 class="form-title">${esc(m.btn)}</h2>
+      <p class="cat-intro">${esc(m.lead)}</p>
+      <div class="field"><label>Subject</label><input id="fb-subject" placeholder="A one-line summary"></div>
+      <div class="field"><label>Message</label>
+        <textarea id="fb-body" style="min-height:150px" placeholder="Write as much as you like."></textarea>
+        <div class="hint">Markdown supported. This thread is visible only to you and the program.</div></div>
+      <div class="form-actions">
+        <button class="btn ghost" data-nav="back">Cancel</button>
+        <button class="btn primary" id="fb-send">Send to the program</button>
+      </div>
+      <p class="login-msg" id="fb-msg"></p>`;
+    renderSidebar();
+    main().querySelectorAll('[data-nav="back"]').forEach(b => b.addEventListener('click', () => go('feedback-list')));
+    $('#fb-send').addEventListener('click', async () => {
+      const msg = $('#fb-msg'); msg.className = 'login-msg';
+      const subject = $('#fb-subject').value.trim(), body = $('#fb-body').value.trim();
+      if (!subject || !body){ msg.textContent = 'Add a subject and a message.'; msg.classList.add('err'); return; }
+      try {
+        const id = await DB.createSubmission({ type, subject, body });
+        await refreshSubs();
+        openThread(id);
+      } catch { msg.textContent = 'Could not send — check your access and try again.'; msg.classList.add('err'); }
+    });
+  }
+
+  async function openThread(id){
+    view = 'feedback-thread'; currentThread = id; clearTopNav();
+    main().innerHTML = '<div class="loading">Loading…</div>';
+    const t = await DB.submission(id);
+    if (!t){ main().innerHTML = '<p>Thread not found.</p>'; return; }
+    renderThread(t);
+    await DB.markRead(id);
+    await refreshSubs();
+    renderSidebar();
+    main().scrollIntoView({ block:'start' });
+  }
+
+  function renderThread(t){
+    const statusCtl = t.canSetStatus
+      ? `<select id="fb-status" class="statussel">${Object.entries(FB_STATUS).map(([v,l])=>
+          `<option value="${v}" ${v===t.status?'selected':''}>${esc(l)}</option>`).join('')}</select>`
+      : statusPill(t.status);
+    main().innerHTML = `
+      <div class="eyebrow" data-nav="back">← ${DB.isAdmin ? 'Inbox' : 'My messages'}</div>
+      <h2 class="tip-title" style="font-size:clamp(24px,3.5vw,32px)">${esc(t.subject)}</h2>
+      <div class="tip-summary">
+        ${typeTag(t.type)}
+        ${DB.isAdmin ? `<span class="dot">·</span><span>from ${esc(t.author)}</span>` : ''}
+        <span class="dot">·</span><span class="statuswrap">${statusCtl}</span>
+      </div>
+      <div class="thread">
+        ${t.messages.map(m=>`
+          <div class="msg ${m.mine?'mine':''}">
+            <div class="msg-hd"><span class="msg-who">${esc(m.name)}${m.isAdmin?'<span class="adminbadge">program</span>':''}</span><span class="msg-date">${esc(m.date)}</span></div>
+            <div class="msg-body tip-body">${DOMPurify.sanitize(marked.parse(m.body||''))}</div>
+          </div>`).join('')}
+      </div>
+      <div class="mark">
+        <div class="mark-hd"><span class="t">Reply</span></div>
+        <div class="mark-bd">
+          <textarea id="fb-reply" placeholder="Write a reply… (markdown supported)"></textarea>
+          <div class="mark-actions"><span class="note" id="fb-replymsg">visible only to you and the program</span>
+            <div class="btns"><button class="btn primary" id="fb-sendreply">Send reply</button></div>
+          </div>
+        </div>
+      </div>`;
+    main().querySelectorAll('[data-nav="back"]').forEach(b => b.addEventListener('click', () => go('feedback-list')));
+    if (t.canSetStatus) $('#fb-status').addEventListener('change', async (e) => {
+      try { await DB.setStatus(t.id, e.target.value); await refreshSubs(); }
+      catch { e.target.value = t.status; }
+    });
+    $('#fb-sendreply').addEventListener('click', async () => {
+      const msg = $('#fb-replymsg');
+      const body = $('#fb-reply').value.trim();
+      if (!body){ msg.textContent = 'Write something first.'; return; }
+      try { await DB.reply(t.id, body); openThread(t.id); }
+      catch { msg.textContent = 'Could not send the reply.'; }
+    });
   }
 
   /* ---------------- concepts (static markdown) ---------------- */

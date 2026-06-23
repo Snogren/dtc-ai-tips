@@ -56,23 +56,44 @@
     return mine ? [...base, {user:'you',name:'You',rating:mine.rating,comment:mine.comment,date:mine.date}] : base;
   }
 
+  /* feedback (demo): a single-user thread store in localStorage. The demo user
+     is 'you' (a member, never admin), so only their own threads exist. */
+  const FB_KEY = 'aitips_demo_feedback';
+  const fbStore = () => { try { return JSON.parse(localStorage.getItem(FB_KEY)||'{}'); } catch { return {}; } };
+  const fbSave = (s) => localStorage.setItem(FB_KEY, JSON.stringify(s));
+  const fbState = () => { const s = fbStore(); return { subs: s.subs || [], reads: s.reads || {} }; };
+
   /* ---------------- public API ---------------- */
   const DB = {
-    configured, mode: configured ? 'live' : 'demo', user: null,
+    configured, mode: configured ? 'live' : 'demo', user: null, isAdmin: false,
 
-    async init(){ if (sb){ const { data } = await sb.auth.getSession(); this.user = data.session?.user || null; } },
+    async init(){
+      if (sb){
+        const { data } = await sb.auth.getSession();
+        this.user = data.session?.user || null;
+        await this.loadAdmin();
+      }
+    },
+    // Whether the signed-in user is an admin (drives the feedback inbox / status UI).
+    // RLS is the real gate; this only decides what to render.
+    async loadAdmin(){
+      if (!sb || !this.user){ this.isAdmin = false; return; }
+      const { data } = await sb.from('profiles').select('is_admin').eq('id', this.user.id).single();
+      this.isAdmin = !!data?.is_admin;
+    },
     onAuth(cb){
       if (!sb) return;
       // Supabase fires onAuthStateChange on tab focus (TOKEN_REFRESHED) — keep `user` fresh,
       // but only notify the app when the signed-in identity actually changes, so the current
       // view (e.g. an open tip) isn't reset to the catalogue every time you switch windows.
       let lastId = this.user?.id ?? null;
-      sb.auth.onAuthStateChange((_e, session) => {
+      sb.auth.onAuthStateChange(async (_e, session) => {
         const u = session?.user || null;
         this.user = u;
         const id = u?.id ?? null;
         if (id === lastId) return;
         lastId = id;
+        await this.loadAdmin();
         cb(u);
       });
     },
@@ -194,6 +215,104 @@
         added:   Object.entries(added).map(([u,n])=>({name:nameOf(u),score:n})).sort((a,b)=>b.score-a.score).slice(0,8),
         topRated: topRated.filter(t=>t.count>0).sort((a,b)=>b.avg-a.avg).slice(0,5)
       };
+    },
+
+    /* ---------------- feedback channel ---------------- */
+    // A thread is "unseen" when its newest message is from the other party
+    // and is newer than this user's read marker.
+    async submissions(){
+      if (!sb){
+        const { subs, reads } = fbState();
+        return subs.map(s => {
+          const last = s.messages[s.messages.length-1];
+          const seen = reads[s.id];
+          return { id:s.id, type:s.type, subject:s.subject, status:s.status,
+            author:'You', authorId:'you', createdAt:s.createdAt, updatedAt:last?.at||s.createdAt,
+            messageCount:s.messages.length, lastMessageAt:last?.at||s.createdAt,
+            unseen: !!last && last.author!=='you' && (!seen || last.at>seen) };
+        }).sort((a,b)=> (b.updatedAt||'').localeCompare(a.updatedAt||''));
+      }
+      const me = this.user?.id;
+      const [{ data:subs }, { data:msgs }, { data:reads }] = await Promise.all([
+        sb.from('submissions').select('id,type,subject,status,author_id,created_at,updated_at, profiles(display_name)'),
+        sb.from('submission_messages').select('submission_id,author_id,created_at'),
+        sb.from('submission_reads').select('submission_id,last_read_at').eq('user_id', me)
+      ]);
+      const readAt = {}; (reads||[]).forEach(r => readAt[r.submission_id]=r.last_read_at);
+      return (subs||[]).map(s => {
+        const m = (msgs||[]).filter(x=>x.submission_id===s.id).sort((a,b)=>a.created_at.localeCompare(b.created_at));
+        const last = m[m.length-1]; const seen = readAt[s.id];
+        return { id:s.id, type:s.type, subject:s.subject, status:s.status,
+          author:s.profiles?.display_name||'—', authorId:s.author_id, createdAt:s.created_at, updatedAt:s.updated_at,
+          messageCount:m.length, lastMessageAt:last?.created_at||s.created_at,
+          unseen: !!last && last.author_id!==me && (!seen || last.created_at>seen) };
+      }).sort((a,b)=> (b.updatedAt||'').localeCompare(a.updatedAt||''));
+    },
+
+    async submission(id){
+      if (!sb){
+        const { subs } = fbState(); const s = subs.find(x=>x.id===id); if (!s) return null;
+        return { id:s.id, type:s.type, subject:s.subject, status:s.status, author:'You', authorId:'you',
+          canSetStatus:false, mine:true,
+          messages: s.messages.map(m => ({ name: m.author==='you'?'You':'Program', mine:m.author==='you',
+            isAdmin:m.author==='admin', body:m.body, date:fmtDate(m.at) })) };
+      }
+      const me = this.user?.id;
+      const { data:s } = await sb.from('submissions').select('id,type,subject,status,author_id, profiles(display_name)').eq('id',id).single();
+      if (!s) return null;
+      const { data:msgs } = await sb.from('submission_messages')
+        .select('body,created_at,author_id, profiles(display_name,is_admin)').eq('submission_id',id).order('created_at');
+      return { id:s.id, type:s.type, subject:s.subject, status:s.status,
+        author:s.profiles?.display_name||'—', authorId:s.author_id,
+        canSetStatus:this.isAdmin, mine:s.author_id===me,
+        messages: (msgs||[]).map(m => ({ name:m.profiles?.display_name||'—', mine:m.author_id===me,
+          isAdmin:!!m.profiles?.is_admin, body:m.body, date:fmtDate(m.created_at) })) };
+    },
+
+    async createSubmission({ type, subject, body }){
+      if (!sb){
+        const st = fbStore(); const subs = st.subs || [];
+        const id = 'fb'+Date.now(); const at = new Date().toISOString();
+        subs.push({ id, type, subject, status:'open', createdAt:at, messages:[{ author:'you', body, at }] });
+        st.subs = subs; st.reads = st.reads || {}; st.reads[id] = at; fbSave(st);
+        return id;
+      }
+      const { data, error } = await sb.from('submissions')
+        .insert({ author_id:this.user.id, type, subject }).select('id').single();
+      if (error) throw error;
+      const { error:mErr } = await sb.from('submission_messages')
+        .insert({ submission_id:data.id, author_id:this.user.id, body });
+      if (mErr) throw mErr;
+      await this.markRead(data.id);
+      return data.id;
+    },
+
+    async reply(id, body){
+      if (!sb){
+        const st = fbStore(); const s = (st.subs||[]).find(x=>x.id===id); if (!s) throw new Error('missing');
+        const at = new Date().toISOString();
+        s.messages.push({ author:'you', body, at });
+        st.reads = st.reads || {}; st.reads[id] = at; fbSave(st);
+        return;
+      }
+      const { error } = await sb.from('submission_messages')
+        .insert({ submission_id:id, author_id:this.user.id, body });
+      if (error) throw error;
+      await this.markRead(id);
+    },
+
+    async setStatus(id, status){
+      if (!sb) throw new Error('demo');
+      const { error } = await sb.from('submissions').update({ status }).eq('id', id);
+      if (error) throw error;
+    },
+
+    // Mark a thread read up to now, so its unseen flag clears.
+    async markRead(id){
+      if (!sb){ const st = fbStore(); st.reads = st.reads || {}; st.reads[id] = new Date().toISOString(); fbSave(st); return; }
+      await sb.from('submission_reads')
+        .upsert({ submission_id:id, user_id:this.user.id, last_read_at:new Date().toISOString() },
+          { onConflict:'submission_id,user_id' });
     }
   };
   window.DB = DB;
