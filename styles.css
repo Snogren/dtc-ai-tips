@@ -22,8 +22,8 @@ input,textarea,button{font-family:inherit}
 .login-card h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-bottom:10px}
 .login-sub{color:var(--ink-soft);font-size:14.5px;margin-bottom:22px}
 #login-form{display:flex;flex-direction:column;gap:10px}
-#email{border:1px solid var(--line-strong);background:var(--bg);border-radius:8px;padding:12px 14px;font-size:15px;color:var(--ink)}
-#email:focus{outline:none;border-color:var(--accent)}
+#login-form input{border:1px solid var(--line-strong);background:var(--bg);border-radius:8px;padding:12px 14px;font-size:15px;color:var(--ink)}
+#login-form input:focus{outline:none;border-color:var(--accent)}
 .login-msg{margin-top:14px;font-size:13.5px;color:var(--ink-soft);min-height:18px}
 .login-msg.ok{color:#3f7a4f}
 .login-msg.err{color:var(--accent)}
