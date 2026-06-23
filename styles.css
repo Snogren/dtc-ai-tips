@@ -119,7 +119,7 @@ input,textarea,button{font-family:inherit}
 .example .copy:hover{color:var(--accent);background:rgba(0,0,0,.05)}
 .example .copy.ok{color:#3f7a4f}
 
-/* mark worked */
+/* mark learned */
 .mark{border:1px solid var(--line-strong);border-radius:10px;background:var(--panel)}
 .mark-hd{padding:14px 18px;border-bottom:1px solid var(--line)}
 .mark-hd .t{font-weight:600;font-size:15px}

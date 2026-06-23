@@ -184,7 +184,7 @@
         ${t.examples.map((ex,i)=>`<div class="example"><button class="copy" data-copy="${i}" title="Copy prompt" aria-label="Copy prompt">⧉</button><span class="ex-text">${esc(ex)}</span></div>`).join('')}
       </div></div>
       <div class="mark">
-        <div class="mark-hd"><span class="t">Mark this tip worked</span></div>
+        <div class="mark-hd"><span class="t">Mark this tip learned</span></div>
         <div class="mark-bd">
           <div class="rrow"><label>Your rating</label>
             <div class="rate" id="rate" data-set="${t.you||0}">
@@ -202,7 +202,7 @@
           <div class="stmt"><div class="top"><span class="name">${esc(c.name)} <span class="stars">${stars(c.rating)}</span></span>
             <span class="date">${esc(c.date)}${c.mine?` · <button class="linkbtn cmt-edit">edit</button> · <button class="linkbtn cmt-del">delete</button>`:''}</span></div>
             <p>${esc(c.text)}</p></div>`).join('')
-          : '<div class="empty">No notes yet — be the first to mark this tip worked.</div>'}
+          : '<div class="empty">No notes yet — be the first to mark this tip learned.</div>'}
       </div>`;
     main().querySelector('.eyebrow').addEventListener('click', () => go('catalogue'));
     if (t.canEdit) main().querySelector('#editTip').addEventListener('click', () => editTip(t.id));
